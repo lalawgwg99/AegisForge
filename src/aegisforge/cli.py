@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from .core import (
@@ -94,6 +95,13 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _print_result(value: object) -> None:
+    if isinstance(value, (dict, list)):
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+        return
+    print(value)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
@@ -120,12 +128,12 @@ def main() -> None:
 
     if args.cmd == "forget":
         r = apply_forgetting(root, max_lessons=args.max_lessons, stale_days=args.stale_days)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "policy":
         r = policy_decision(action=args.action, content=args.content, profile=args.profile)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "recover-plan":
@@ -135,7 +143,7 @@ def main() -> None:
             strategies=args.strategies,
             explore_rate=args.explore_rate,
         )
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "recover-feedback":
@@ -145,52 +153,52 @@ def main() -> None:
             strategy=args.strategy,
             success=args.success == "true",
         )
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "recover-report":
         r = recovery_report(root, failure_class=(args.failure_class or None))
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "benchmark-recovery":
         r = benchmark_recovery_learning(root, rounds=args.rounds, seed=args.seed)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "quality-check":
         r = quality_check(root, rounds=args.rounds)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "causal-distill":
         r = distill_causal_lanes(root, max_lanes=args.max_lanes, min_support=args.min_support)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "preflight":
         r = preflight_guardrails(root, action=args.action, content=args.content, top_k=args.top_k)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "safety-check":
         r = safety_check(root, action=args.action, content=args.content, profile=args.profile)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "safety-replay":
         r = replay_safety_decision(root, decision_id=args.decision_id)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "benchmark-pack":
         r = run_benchmark_pack(root, rounds=args.rounds, report_path=args.report_path)
-        print(r)
+        _print_result(r)
         return
 
     if args.cmd == "health":
         r = health_report(root)
-        print(r)
+        _print_result(r)
         return
 
 
