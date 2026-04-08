@@ -1,0 +1,28 @@
+[
+  {
+    "id": "c3f91851-3e37-47e3-8e46-5eb37a7defa8",
+    "created_at": "2026-04-08T14:58:40.934283+00:00",
+    "error_type": "timeout",
+    "text": "Use retry with backoff and set explicit timeout boundaries before rerun.",
+    "hits": 1,
+    "last_used": "2026-04-08T14:58:40.961141+00:00",
+    "confidence": 0.7,
+    "source_errors": 1,
+    "tags": [
+      "timeout"
+    ]
+  },
+  {
+    "id": "b3f47d0d-848c-4bbc-978a-fdde58fb451e",
+    "created_at": "2026-04-08T14:58:40.934555+00:00",
+    "error_type": "unauthorized",
+    "text": "Verify credentials and required scopes before executing protected operations.",
+    "hits": 1,
+    "last_used": "2026-04-08T14:58:40.961232+00:00",
+    "confidence": 0.7,
+    "source_errors": 1,
+    "tags": [
+      "unauthorized"
+    ]
+  }
+]
