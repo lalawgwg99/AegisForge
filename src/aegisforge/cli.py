@@ -3,7 +3,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .core import capture_failure, distill_lessons, health_report, inject_lessons
+from .core import (
+    apply_forgetting,
+    capture_failure,
+    distill_lessons,
+    health_report,
+    inject_lessons,
+    policy_decision,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,6 +29,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     i = sub.add_parser("inject", help="pick top-k lessons")
     i.add_argument("--top-k", type=int, default=3)
+
+    f = sub.add_parser("forget", help="apply staleness + LRU forgetting")
+    f.add_argument("--max-lessons", type=int, default=50)
+    f.add_argument("--stale-days", type=int, default=30)
+
+    pol = sub.add_parser("policy", help="evaluate risk policy for an action")
+    pol.add_argument("--action", required=True)
+    pol.add_argument("--content", default="")
+    pol.add_argument("--profile", choices=["strict", "balanced", "dev"], default="balanced")
 
     sub.add_parser("health", help="memory quality report")
     return p
@@ -49,6 +65,16 @@ def main() -> None:
         print(f"injected: {len(items)} lesson(s)")
         for l in items:
             print(f"- {l['text']}")
+        return
+
+    if args.cmd == "forget":
+        r = apply_forgetting(root, max_lessons=args.max_lessons, stale_days=args.stale_days)
+        print(r)
+        return
+
+    if args.cmd == "policy":
+        r = policy_decision(action=args.action, content=args.content, profile=args.profile)
+        print(r)
         return
 
     if args.cmd == "health":

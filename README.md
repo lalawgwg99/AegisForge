@@ -37,7 +37,17 @@ PYTHONPATH=src python3 -m aegisforge.cli distill --max 3
 PYTHONPATH=src python3 -m aegisforge.cli inject --top-k 3
 ```
 
-5) 健康檢查
+5) 執行遺忘策略（stale + LRU）
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli forget --max-lessons 50 --stale-days 30
+```
+
+6) 風險動作 policy 判斷
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli policy --action exec --content "rm -rf /tmp/demo" --profile balanced
+```
+
+7) 健康檢查
 ```bash
 PYTHONPATH=src python3 -m aegisforge.cli health
 ```
@@ -56,8 +66,10 @@ python3 -m pip install .
 
 - failure capture：把錯誤事件寫入 JSONL
 - lesson distillation：依錯誤類型萃取可執行教訓
-- lesson injection：選 top-k lessons 注入下一輪
-- health report：檢查 lessons 數量、重複、弱規則
+- lesson injection：選 top-k lessons 注入下一輪（會回寫 hits/last_used）
+- active forgetting：stale decay + LRU eviction
+- policy gate：針對高風險動作輸出 allow/block/ask
+- health report：檢查 lessons 數量、精確重複、語義重複、弱規則
 
 ## 為什麼這個方向比單一產品更有價值
 
