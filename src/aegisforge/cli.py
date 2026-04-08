@@ -24,6 +24,15 @@ from .safety_gate import replay_safety_decision, safety_check
 from .benchmark_pack import run_benchmark_pack
 
 
+def _parse_bool_flag(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "t", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n", "off"}:
+        return False
+    raise argparse.ArgumentTypeError("expected boolean value: true/false/yes/no/1/0")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="aegisforge", description="AegisForge MVP CLI")
     p.add_argument("--root", default=".aegisforge", help="data root path")
@@ -58,7 +67,12 @@ def build_parser() -> argparse.ArgumentParser:
     rf = sub.add_parser("recover-feedback", help="record recovery outcome")
     rf.add_argument("--failure-class", required=True)
     rf.add_argument("--strategy", required=True)
-    rf.add_argument("--success", choices=["true", "false"], required=True)
+    rf.add_argument(
+        "--success",
+        type=_parse_bool_flag,
+        required=True,
+        help="recovery success (true/false, yes/no, 1/0)",
+    )
 
     rr = sub.add_parser("recover-report", help="show learned recovery stats")
     rr.add_argument("--failure-class", default="")
@@ -151,7 +165,7 @@ def main() -> None:
             root,
             failure_class=args.failure_class,
             strategy=args.strategy,
-            success=args.success == "true",
+            success=args.success,
         )
         _print_result(r)
         return
