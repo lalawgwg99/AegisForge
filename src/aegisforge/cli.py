@@ -17,7 +17,10 @@ from .recovery_graph import (
     record_recovery_outcome,
     recovery_report,
 )
+from .causal_lane import distill_causal_lanes, preflight_guardrails
 from .quality import quality_check
+from .safety_gate import replay_safety_decision, safety_check
+from .benchmark_pack import run_benchmark_pack
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,6 +68,27 @@ def build_parser() -> argparse.ArgumentParser:
 
     qc = sub.add_parser("quality-check", help="run default 9.0 quality gate")
     qc.add_argument("--rounds", type=int, default=300)
+
+    cd = sub.add_parser("causal-distill", help="build causal lanes from historical failures")
+    cd.add_argument("--max-lanes", type=int, default=8)
+    cd.add_argument("--min-support", type=int, default=2)
+
+    pf = sub.add_parser("preflight", help="inject guardrails before execution")
+    pf.add_argument("--action", required=True)
+    pf.add_argument("--content", default="")
+    pf.add_argument("--top-k", type=int, default=4)
+
+    sg = sub.add_parser("safety-check", help="evaluate action with verifiable safety gate")
+    sg.add_argument("--action", required=True)
+    sg.add_argument("--content", default="")
+    sg.add_argument("--profile", choices=["strict", "balanced", "dev"], default="balanced")
+
+    sr = sub.add_parser("safety-replay", help="replay a logged safety decision by id")
+    sr.add_argument("--decision-id", required=True)
+
+    bp = sub.add_parser("benchmark-pack", help="run scenario benchmark pack and generate report")
+    bp.add_argument("--rounds", type=int, default=300)
+    bp.add_argument("--report-path", default="")
 
     sub.add_parser("health", help="memory quality report")
     return p
@@ -136,6 +160,31 @@ def main() -> None:
 
     if args.cmd == "quality-check":
         r = quality_check(root, rounds=args.rounds)
+        print(r)
+        return
+
+    if args.cmd == "causal-distill":
+        r = distill_causal_lanes(root, max_lanes=args.max_lanes, min_support=args.min_support)
+        print(r)
+        return
+
+    if args.cmd == "preflight":
+        r = preflight_guardrails(root, action=args.action, content=args.content, top_k=args.top_k)
+        print(r)
+        return
+
+    if args.cmd == "safety-check":
+        r = safety_check(root, action=args.action, content=args.content, profile=args.profile)
+        print(r)
+        return
+
+    if args.cmd == "safety-replay":
+        r = replay_safety_decision(root, decision_id=args.decision_id)
+        print(r)
+        return
+
+    if args.cmd == "benchmark-pack":
+        r = run_benchmark_pack(root, rounds=args.rounds, report_path=args.report_path)
         print(r)
         return
 

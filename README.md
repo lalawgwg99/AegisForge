@@ -1,165 +1,158 @@
 # AegisForge（白話版）
 
 一句話：
-AegisForge 幫你的 Agent 「少犯重複錯、出事時更快救回來」，而且能用數字證明有沒有變好。
+AegisForge 幫你的 Agent「少重複犯錯、出事更快恢復、危險操作可追證據」，而且能用 benchmark 證明有沒有進步。
 
 -----------------------------------
 
-## 你可以把它想成什麼？
-
-像是 Agent 的「可靠性外掛」：
-1) 記錄失敗
-2) 從失敗提煉教訓
-3) 下次先套用教訓
-4) 自動學習哪種恢復策略最有效
-5) 用 benchmark 看有沒有真的進步
-
------------------------------------
-
-## 3 分鐘上手（直接照抄）
+## 3 分鐘上手（照抄可跑）
 
 需求：Python 3.9+
 
 ```bash
 cd AegisForge
-
-# 免安裝執行
 PYTHONPATH=src python3 -m aegisforge.cli --help
 ```
 
-先塞兩個常見錯誤：
+先建立幾筆錯誤事件：
 
 ```bash
 PYTHONPATH=src python3 -m aegisforge.cli capture --source tool --type timeout --message "request timeout after 30s"
 PYTHONPATH=src python3 -m aegisforge.cli capture --source tool --type unauthorized --message "401 unauthorized from api"
 ```
 
-提煉教訓 + 注入下一輪：
+提煉教訓：
 
 ```bash
 PYTHONPATH=src python3 -m aegisforge.cli distill --max 3
 PYTHONPATH=src python3 -m aegisforge.cli inject --top-k 3
-PYTHONPATH=src python3 -m aegisforge.cli health
 ```
 
 -----------------------------------
 
-## 你最在意的：真的有感嗎？
+## p2：Causal Lane Memory + preflight guardrail
 
-請跑這個（預設門檻）：
+1) 從歷史錯誤產生因果 lane：
+
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge causal-distill --max-lanes 8 --min-support 2
+```
+
+2) 任務前注入 guardrail：
+
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge preflight \
+  --action "run sync job" \
+  --content "api token timeout settings" \
+  --top-k 4
+```
+
+你會拿到 `injected_guardrails` 和 `preflight_brief`，可直接放進 agent 任務前置提示。
+
+-----------------------------------
+
+## p3：Verifiable Safety Gate（有證據、可 replay）
+
+1) 執行安全判斷：
+
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge safety-check \
+  --action "delete production table" \
+  --content "DROP TABLE users; rm -rf /tmp/old" \
+  --profile balanced
+```
+
+回傳會包含：
+- decision（allow / ask / block）
+- reason
+- evidence（命中規則）
+- decision_id（可回放）
+
+2) 用 decision_id replay 驗證：
+
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge safety-replay --decision-id <decision_id>
+```
+
+`verified: true` 代表可重算且一致。
+
+-----------------------------------
+
+## p4：Benchmark Pack（Before/After 報告）
+
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge benchmark-pack --rounds 300
+```
+
+會產出：
+1) Recovery before/after（baseline vs adaptive）
+2) Safety scenario 指標（accuracy / unsafe_allow_rate / overblock_rate）
+3) Causal preflight before/after
+4) 報告檔：`.aegisforge/reports/benchmark-report.md`
+
+-----------------------------------
+
+## 9.0 驗收（預設門檻）
 
 ```bash
 PYTHONPATH=src python3 -m aegisforge.cli --root /tmp/aegisforge-qc quality-check --rounds 300
 ```
 
-它會給你：
-- score（滿分 10）
-- 是否達標 9.0+
-- adaptive 成功率
-- 相對提升幅度（relative lift）
-
-預設達標線：
+預設門檻：
 - adaptive_success_rate >= 0.75
 - relative_lift_pct >= 20%
 - weak_lessons == 0
 
 -----------------------------------
 
-## Recovery Graph（最重要的新功能）
+## 命令總覽
 
-白話：
-系統會學「哪個錯誤該用哪種修復策略」。
-
-### 1) 先問系統建議怎麼修
-
-```bash
-PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge recover-plan \
-  --failure-class timeout \
-  --strategies retry_backoff restart_worker escalate_human
-```
-
-### 2) 修完後回報成功或失敗
-
-```bash
-PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge recover-feedback \
-  --failure-class timeout \
-  --strategy retry_backoff \
-  --success true
-```
-
-### 3) 看學到什麼
-
-```bash
-PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge recover-report
-```
-
------------------------------------
-
-## 所有命令（白話）
-
-1) 記錯誤
+### 事件 / 教訓
 - capture
-
-2) 生教訓/用教訓
 - distill
 - inject
 - forget
 - health
 
-3) 風險判斷
-- policy（allow / ask / block）
+### 風險策略（舊版）
+- policy
 
-4) 恢復學習
+### 恢復學習
 - recover-plan
 - recover-feedback
 - recover-report
 - benchmark-recovery
-- quality-check（9.0 驗收）
+
+### 因果記憶與前置防呆
+- causal-distill
+- preflight
+
+### 可驗證安全閘門
+- safety-check
+- safety-replay
+
+### 一鍵驗收與報告
+- quality-check
+- benchmark-pack
 
 -----------------------------------
 
-## 常見情境範例
+## 資料位置（預設 --root=.aegisforge）
 
-情境 A：一直 timeout
-1. recover-plan 看建議
-2. 先試 retry_backoff
-3. 成功就 feedback=true
-4. 一週後看 report，通常會自動偏向成功率高策略
-
-情境 B：token/權限常失敗
-1. failure_class 用 unauthorized
-2. strategies 放 refresh_credentials / retry_backoff / escalate_human
-3. 系統會學到 refresh_credentials 成功率通常更高
-
-情境 C：想確認這週到底有沒有進步
-1. 固定每週五跑 quality-check
-2. 只看三個數字：score、adaptive_success_rate、relative_lift_pct
-
------------------------------------
-
-## 資料會存哪裡？
-
-預設在 `--root`（預設 `.aegisforge`）：
 - events/error-seeds.jsonl
 - lessons/active.jsonl
 - lessons/snapshot.json
 - recovery/graph.json
+- causal/lanes.json
+- policy/decisions.jsonl
 - benchmarks/...
+- reports/benchmark-report.md
 
 -----------------------------------
 
 ## 版本
 
-目前：v0.2.0
-
------------------------------------
-
-## 文件（進階）
-
-- docs/problem-map.md
-- docs/architecture.md
-- docs/roadmap.md
-- docs/breakthrough-poc-14d.md
+目前：v0.3.0
 
 -----------------------------------
 

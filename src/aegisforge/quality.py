@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from .core import health_report
@@ -17,6 +18,8 @@ def quality_check(
     bench_rows = []
     for seed in seeds:
         bench_root = root / "benchmarks" / f"seed-{seed}"
+        if bench_root.exists():
+            shutil.rmtree(bench_root)
         row = benchmark_recovery_learning(bench_root, rounds=rounds, seed=seed)
         bench_rows.append(row)
 
