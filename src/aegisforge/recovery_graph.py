@@ -188,7 +188,7 @@ def benchmark_recovery_learning(root: Path, rounds: int = 200, seed: int = 42) -
         if random.random() < true_env[failure_class][baseline_strategy]:
             baseline_success += 1
 
-        plan = propose_recovery_plan(root, failure_class, strategies)
+        plan = propose_recovery_plan(root, failure_class, strategies, explore_rate=0.08)
         picked = plan["chosen_strategy"]
         is_success = random.random() < true_env[failure_class][picked]
         if is_success:

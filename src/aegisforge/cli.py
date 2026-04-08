@@ -17,6 +17,7 @@ from .recovery_graph import (
     record_recovery_outcome,
     recovery_report,
 )
+from .quality import quality_check
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
     rb = sub.add_parser("benchmark-recovery", help="simulate adaptive-vs-static recovery")
     rb.add_argument("--rounds", type=int, default=200)
     rb.add_argument("--seed", type=int, default=42)
+
+    qc = sub.add_parser("quality-check", help="run default 9.0 quality gate")
+    qc.add_argument("--rounds", type=int, default=300)
 
     sub.add_parser("health", help="memory quality report")
     return p
@@ -127,6 +131,11 @@ def main() -> None:
 
     if args.cmd == "benchmark-recovery":
         r = benchmark_recovery_learning(root, rounds=args.rounds, seed=args.seed)
+        print(r)
+        return
+
+    if args.cmd == "quality-check":
+        r = quality_check(root, rounds=args.rounds)
         print(r)
         return
 
