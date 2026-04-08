@@ -22,6 +22,7 @@ from .causal_lane import distill_causal_lanes, preflight_guardrails
 from .quality import quality_check
 from .safety_gate import replay_safety_decision, safety_check
 from .benchmark_pack import run_benchmark_pack
+from .dream_mode import generate_dream_report
 
 
 def _parse_bool_flag(value: str) -> bool:
@@ -104,6 +105,11 @@ def build_parser() -> argparse.ArgumentParser:
     bp = sub.add_parser("benchmark-pack", help="run scenario benchmark pack and generate report")
     bp.add_argument("--rounds", type=int, default=300)
     bp.add_argument("--report-path", default="")
+
+    dr = sub.add_parser("dream-report", help="dream mode orchestration (dream primary + AegisForge repo signal secondary)")
+    dr.add_argument("--repo-path", default=".", help="target repo path for auxiliary health signals")
+    dr.add_argument("--output-dir", default="", help="optional output directory for dream markdown")
+    dr.add_argument("--top-k", type=int, default=3)
 
     sub.add_parser("health", help="memory quality report")
     return p
@@ -207,6 +213,17 @@ def main() -> None:
 
     if args.cmd == "benchmark-pack":
         r = run_benchmark_pack(root, rounds=args.rounds, report_path=args.report_path)
+        _print_result(r)
+        return
+
+    if args.cmd == "dream-report":
+        output_dir = Path(args.output_dir) if args.output_dir else None
+        r = generate_dream_report(
+            root,
+            repo_path=Path(args.repo_path),
+            output_dir=output_dir,
+            top_k=args.top_k,
+        )
         _print_result(r)
         return
 

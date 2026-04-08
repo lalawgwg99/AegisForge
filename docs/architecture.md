@@ -35,7 +35,13 @@ Responsibilities:
 - messaging adapters (Telegram/WhatsApp/Slack/Discord/...)
 - model provider adapters
 
-## Layer 5: Evaluation & Ops
+## Layer 5: Dream Orchestrator（new）
+- dream-primary synthesis（摘要、關聯、下一步、焦點）
+- aegisforge-secondary signal（health/recovery/repo 狀態）
+- actionable scoring（Signal / Actionability / Coherence）
+- markdown artifact writer（daily dream log）
+
+## Layer 6: Evaluation & Ops
 - recurrence-rate dashboard
 - success-rate and recovery-step metrics
 - lesson quality lint report

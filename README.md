@@ -80,6 +80,21 @@ PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge safety-replay --deci
 
 -----------------------------------
 
+## p3.5：Dream Mode 整合（夢境主流程 + AegisForge 輔助）
+
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge dream-report \
+  --repo-path /Users/jazzxx/Desktop/AegisForge
+```
+
+會產出：
+- dream markdown 報告（預設 `.aegisforge/reports/dreams/YYYY-MM-DD-dream.md`）
+- 品質評分（Signal / Actionability / Coherence / Total）
+- 今日唯一焦點與 1-3 條可執行下一步
+- AegisForge repo 輕量健康訊號（branch / dirty / recent commits）
+
+-----------------------------------
+
 ## p4：Benchmark Pack（Before/After 報告）
 
 ```bash
@@ -136,6 +151,7 @@ PYTHONPATH=src python3 -m aegisforge.cli --root /tmp/aegisforge-qc quality-check
 ### 一鍵驗收與報告
 - quality-check
 - benchmark-pack
+- dream-report（夢境主流程 + AegisForge 輔助訊號）
 
 -----------------------------------
 
