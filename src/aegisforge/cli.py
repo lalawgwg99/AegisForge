@@ -11,6 +11,12 @@ from .core import (
     inject_lessons,
     policy_decision,
 )
+from .recovery_graph import (
+    benchmark_recovery_learning,
+    propose_recovery_plan,
+    record_recovery_outcome,
+    recovery_report,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +44,23 @@ def build_parser() -> argparse.ArgumentParser:
     pol.add_argument("--action", required=True)
     pol.add_argument("--content", default="")
     pol.add_argument("--profile", choices=["strict", "balanced", "dev"], default="balanced")
+
+    rp = sub.add_parser("recover-plan", help="rank candidate recovery strategies")
+    rp.add_argument("--failure-class", required=True)
+    rp.add_argument("--strategies", nargs="+", required=True)
+    rp.add_argument("--explore-rate", type=float, default=0.15)
+
+    rf = sub.add_parser("recover-feedback", help="record recovery outcome")
+    rf.add_argument("--failure-class", required=True)
+    rf.add_argument("--strategy", required=True)
+    rf.add_argument("--success", choices=["true", "false"], required=True)
+
+    rr = sub.add_parser("recover-report", help="show learned recovery stats")
+    rr.add_argument("--failure-class", default="")
+
+    rb = sub.add_parser("benchmark-recovery", help="simulate adaptive-vs-static recovery")
+    rb.add_argument("--rounds", type=int, default=200)
+    rb.add_argument("--seed", type=int, default=42)
 
     sub.add_parser("health", help="memory quality report")
     return p
@@ -74,6 +97,36 @@ def main() -> None:
 
     if args.cmd == "policy":
         r = policy_decision(action=args.action, content=args.content, profile=args.profile)
+        print(r)
+        return
+
+    if args.cmd == "recover-plan":
+        r = propose_recovery_plan(
+            root,
+            failure_class=args.failure_class,
+            strategies=args.strategies,
+            explore_rate=args.explore_rate,
+        )
+        print(r)
+        return
+
+    if args.cmd == "recover-feedback":
+        r = record_recovery_outcome(
+            root,
+            failure_class=args.failure_class,
+            strategy=args.strategy,
+            success=args.success == "true",
+        )
+        print(r)
+        return
+
+    if args.cmd == "recover-report":
+        r = recovery_report(root, failure_class=(args.failure_class or None))
+        print(r)
+        return
+
+    if args.cmd == "benchmark-recovery":
+        r = benchmark_recovery_learning(root, rounds=args.rounds, seed=args.seed)
         print(r)
         return
 
