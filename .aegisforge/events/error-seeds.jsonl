@@ -1,2 +1,0 @@
-{"id": "15a37947-fd25-4451-b657-40e3700599c3", "timestamp": "2026-04-08T14:58:40.879216+00:00", "source": "tool", "error_type": "timeout", "message": "request timeout after 30s"}
-{"id": "c6bfe642-d066-4d7f-91fe-a6f4f9afee48", "timestamp": "2026-04-08T14:58:40.906753+00:00", "source": "tool", "error_type": "unauthorized", "message": "401 unauthorized from api"}
