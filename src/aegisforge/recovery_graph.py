@@ -52,7 +52,7 @@ def propose_recovery_plan(
 
     clean_strategies = [s.strip() for s in strategies if s.strip()]
     if not clean_strategies:
-        clean_strategies = ["retry_once", "restart_worker", "escalate_human"]
+        raise ValueError("strategies must contain at least one non-empty strategy")
 
     for s in clean_strategies:
         _ensure_strategy_bucket(data, failure_class, s)
