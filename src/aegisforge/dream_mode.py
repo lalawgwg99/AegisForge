@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+import uuid
 
 from .core import health_report, inject_lessons
 from .recovery_graph import recovery_report
-from .storage import read_jsonl
+from .storage import read_jsonl, write_jsonl
 
 
 @dataclass
@@ -16,6 +17,71 @@ class RepoSignal:
     branch: str = ""
     dirty: bool = False
     recent_commits: list[str] | None = None
+
+
+def _ledger_path(root: Path) -> Path:
+    return root / "reports" / "dreams" / "action-ledger.jsonl"
+
+
+def _load_ledger(root: Path) -> list[dict]:
+    return read_jsonl(_ledger_path(root))
+
+
+def _save_ledger(root: Path, rows: list[dict]) -> None:
+    write_jsonl(_ledger_path(root), rows)
+
+
+def _upsert_today_actions(root: Path, date_key: str, steps: list[str]) -> list[dict]:
+    rows = _load_ledger(root)
+    existing_keys = {(r.get("date"), r.get("text")) for r in rows}
+
+    created = []
+    for step in steps:
+        key = (date_key, step)
+        if key in existing_keys:
+            continue
+        row = {
+            "id": str(uuid.uuid4())[:8],
+            "date": date_key,
+            "text": step,
+            "status": "pending",
+            "created_at": datetime.now().isoformat(),
+            "completed_at": None,
+        }
+        rows.append(row)
+        created.append(row)
+
+    if created:
+        _save_ledger(root, rows)
+    return created
+
+
+def _completion_stats(rows: list[dict], date_key: str) -> dict:
+    day_rows = [r for r in rows if r.get("date") == date_key]
+    total = len(day_rows)
+    done = sum(1 for r in day_rows if r.get("status") == "completed")
+    rate = round((done / total) * 100, 1) if total else None
+    return {"date": date_key, "total": total, "completed": done, "rate_pct": rate}
+
+
+def list_actions(root: Path, status: str = "pending", limit: int = 20) -> dict:
+    rows = _load_ledger(root)
+    filtered = rows
+    if status in {"pending", "completed"}:
+        filtered = [r for r in rows if r.get("status") == status]
+    filtered.sort(key=lambda r: (r.get("date", ""), r.get("created_at", "")), reverse=True)
+    return {"count": len(filtered), "items": filtered[: max(1, limit)]}
+
+
+def complete_action(root: Path, action_id: str) -> dict:
+    rows = _load_ledger(root)
+    for row in rows:
+        if row.get("id") == action_id:
+            row["status"] = "completed"
+            row["completed_at"] = datetime.now().isoformat()
+            _save_ledger(root, rows)
+            return {"ok": True, "id": action_id, "status": "completed"}
+    return {"ok": False, "id": action_id, "error": "not_found"}
 
 
 def _run_git(repo_path: Path, args: list[str]) -> str:
@@ -113,6 +179,14 @@ def generate_dream_report(
     repo = collect_repo_signal(repo_path)
     next_steps = _make_next_steps(injected or lessons, repo, top_k=top_k)
 
+    today_key = f"{now:%Y-%m-%d}"
+    yesterday_key = f"{(now - timedelta(days=1)):%Y-%m-%d}"
+    _upsert_today_actions(root, today_key, next_steps)
+    ledger_rows = _load_ledger(root)
+    yesterday_stats = _completion_stats(ledger_rows, yesterday_key)
+    today_stats = _completion_stats(ledger_rows, today_key)
+    today_rows = [r for r in ledger_rows if r.get("date") == today_key]
+
     signal_count = len(events[-10:]) + len(lessons) + (1 if repo.exists else 0)
     scores = _score(signal_count, next_steps, int(health.get("weak_lessons", 0)), repo.dirty)
 
@@ -156,6 +230,23 @@ def generate_dream_report(
         md.append(f"{idx}. {line}")
     md.append("")
 
+    md.append("## 今日 Action IDs")
+    for row in today_rows[:3]:
+        md.append(f"- {row.get('id')}: {row.get('status')}")
+    md.append("")
+
+    md.append("## 建議完成率追蹤")
+    if yesterday_stats["total"] > 0:
+        md.append(
+            f"- 昨日（{yesterday_stats['date']}）：{yesterday_stats['completed']}/{yesterday_stats['total']} 完成，完成率 {yesterday_stats['rate_pct']}%"
+        )
+    else:
+        md.append(f"- 昨日（{yesterday_stats['date']}）：無可追蹤建議")
+    md.append(
+        f"- 今日（{today_stats['date']}）：已產生 {today_stats['total']} 條建議；可用 dream-complete 標記完成"
+    )
+    md.append("")
+
     md.append("## 風險與阻塞")
     if repo.exists and repo.dirty:
         md.append("- 倉庫有未提交變更，若直接擴增任務容易混入噪音。建議先整理差異後再推進。")
@@ -190,6 +281,11 @@ def generate_dream_report(
         "scores": scores,
         "focus": focus,
         "next_steps": next_steps,
+        "completion_tracker": {
+            "yesterday": yesterday_stats,
+            "today": today_stats,
+            "sample_action_ids": [r.get("id") for r in today_rows[:3]],
+        },
         "repo_signal": {
             "exists": repo.exists,
             "branch": repo.branch,

@@ -22,7 +22,7 @@ from .causal_lane import distill_causal_lanes, preflight_guardrails
 from .quality import quality_check
 from .safety_gate import replay_safety_decision, safety_check
 from .benchmark_pack import run_benchmark_pack
-from .dream_mode import generate_dream_report
+from .dream_mode import complete_action, generate_dream_report, list_actions
 
 
 def _parse_bool_flag(value: str) -> bool:
@@ -110,6 +110,13 @@ def build_parser() -> argparse.ArgumentParser:
     dr.add_argument("--repo-path", default=".", help="target repo path for auxiliary health signals")
     dr.add_argument("--output-dir", default="", help="optional output directory for dream markdown")
     dr.add_argument("--top-k", type=int, default=3)
+
+    da = sub.add_parser("dream-actions", help="list dream action ledger items")
+    da.add_argument("--status", choices=["pending", "completed", "all"], default="pending")
+    da.add_argument("--limit", type=int, default=20)
+
+    dc = sub.add_parser("dream-complete", help="mark dream action as completed by id")
+    dc.add_argument("--id", required=True, dest="action_id")
 
     sub.add_parser("health", help="memory quality report")
     return p
@@ -224,6 +231,17 @@ def main() -> None:
             output_dir=output_dir,
             top_k=args.top_k,
         )
+        _print_result(r)
+        return
+
+    if args.cmd == "dream-actions":
+        status = "all" if args.status == "all" else args.status
+        r = list_actions(root, status=status, limit=args.limit)
+        _print_result(r)
+        return
+
+    if args.cmd == "dream-complete":
+        r = complete_action(root, action_id=args.action_id)
         _print_result(r)
         return
 

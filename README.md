@@ -92,6 +92,17 @@ PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge dream-report \
 - 品質評分（Signal / Actionability / Coherence / Total）
 - 今日唯一焦點與 1-3 條可執行下一步
 - AegisForge repo 輕量健康訊號（branch / dirty / recent commits）
+- 建議完成率追蹤（昨日完成率 + 今日 action IDs）
+
+查看待辦 action：
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge dream-actions --status pending
+```
+
+標記 action 完成：
+```bash
+PYTHONPATH=src python3 -m aegisforge.cli --root .aegisforge dream-complete --id <action_id>
+```
 
 -----------------------------------
 
@@ -152,6 +163,8 @@ PYTHONPATH=src python3 -m aegisforge.cli --root /tmp/aegisforge-qc quality-check
 - quality-check
 - benchmark-pack
 - dream-report（夢境主流程 + AegisForge 輔助訊號）
+- dream-actions（查看 action ledger）
+- dream-complete（標記 action 完成）
 
 -----------------------------------
 
