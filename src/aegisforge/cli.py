@@ -19,6 +19,8 @@ from .recovery_graph import (
     recovery_report,
 )
 from .causal_lane import distill_causal_lanes, preflight_guardrails
+from .log_import import import_agent_log
+from .llm_extract import distill_with_llm
 from .quality import quality_check
 from .safety_gate import replay_safety_decision, safety_check
 from .benchmark_pack import run_benchmark_pack
@@ -117,6 +119,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     dc = sub.add_parser("dream-complete", help="mark dream action as completed by id")
     dc.add_argument("--id", required=True, dest="action_id")
+
+    il = sub.add_parser("import-log", help="import external agent log and extract failures")
+    il.add_argument("--path", required=True, help="path to the log file (JSONL or text)")
+    il.add_argument("--format", choices=["auto", "jsonl", "text"], default="auto", dest="log_format")
+    il.add_argument("--field-map", default="", help='JSON field mapping, e.g. \'{"message":"msg","error_type":"level"}\'')
+
+    dl = sub.add_parser("distill-llm", help="distill lessons using LLM extraction")
+    dl.add_argument("--max", type=int, default=3)
+    dl.add_argument("--api-url", default="", help="OpenAI-compatible API URL")
+    dl.add_argument("--api-key", default="", help="API key")
+    dl.add_argument("--model", default="", help="model name")
 
     sub.add_parser("health", help="memory quality report")
     return p
@@ -243,6 +256,25 @@ def main() -> None:
     if args.cmd == "dream-complete":
         r = complete_action(root, action_id=args.action_id)
         _print_result(r)
+        return
+
+    if args.cmd == "import-log":
+        field_map = None
+        if args.field_map:
+            import json as _json
+            field_map = _json.loads(args.field_map)
+        r = import_agent_log(root, path=Path(args.path), fmt=args.log_format, field_map=field_map)
+        _print_result(r)
+        return
+
+    if args.cmd == "distill-llm":
+        lessons = distill_with_llm(
+            root, max_lessons=args.max,
+            api_url=args.api_url, api_key=args.api_key, model=args.model,
+        )
+        print(f"distilled (LLM): {len(lessons)} lesson(s)")
+        for l in lessons:
+            print(f"- {l['text']}")
         return
 
     if args.cmd == "health":

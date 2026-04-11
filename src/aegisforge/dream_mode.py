@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import uuid
 
@@ -45,7 +45,7 @@ def _upsert_today_actions(root: Path, date_key: str, steps: list[str]) -> list[d
             "date": date_key,
             "text": step,
             "status": "pending",
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "completed_at": None,
         }
         rows.append(row)
@@ -70,7 +70,7 @@ def list_actions(root: Path, status: str = "pending", limit: int = 20) -> dict:
     if status in {"pending", "completed"}:
         filtered = [r for r in rows if r.get("status") == status]
     filtered.sort(key=lambda r: (r.get("date", ""), r.get("created_at", "")), reverse=True)
-    return {"count": len(filtered), "items": filtered[: max(1, limit)]}
+    return {"count": len(filtered), "items": filtered[:max(0, limit)]}
 
 
 def complete_action(root: Path, action_id: str) -> dict:
@@ -78,7 +78,7 @@ def complete_action(root: Path, action_id: str) -> dict:
     for row in rows:
         if row.get("id") == action_id:
             row["status"] = "completed"
-            row["completed_at"] = datetime.now().isoformat()
+            row["completed_at"] = datetime.now(timezone.utc).isoformat()
             _save_ledger(root, rows)
             return {"ok": True, "id": action_id, "status": "completed"}
     return {"ok": False, "id": action_id, "error": "not_found"}

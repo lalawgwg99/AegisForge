@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .storage import ensure_root, write_json
@@ -103,7 +103,7 @@ def record_recovery_outcome(root: Path, failure_class: str, strategy: str, succe
         bucket["failures"] = int(bucket.get("failures", 0)) + 1
         bucket["last_result"] = "failure"
 
-    data["failure_classes"][failure_class]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+    data["failure_classes"][failure_class]["updated_at"] = datetime.now(timezone.utc).isoformat()
     _save_graph(root, data)
 
     return {
@@ -158,6 +158,12 @@ def recovery_report(root: Path, failure_class: str | None = None) -> dict:
 
 
 def benchmark_recovery_learning(root: Path, rounds: int = 200, seed: int = 42) -> dict:
+    if rounds <= 0:
+        return {
+            "rounds": 0, "seed": seed,
+            "baseline_success_rate": 0.0, "adaptive_success_rate": 0.0,
+            "absolute_lift": 0.0, "relative_lift_pct": 0.0,
+        }
     random.seed(seed)
     ensure_root(root)
 

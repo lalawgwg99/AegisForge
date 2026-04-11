@@ -171,33 +171,10 @@ def apply_forgetting(root: Path, max_lessons: int = 50, stale_days: int = 30) ->
 
 
 def policy_decision(action: str, content: str, profile: str = "balanced") -> dict:
-    action_low = action.lower()
-    text = content or ""
-    low = text.lower()
+    from .safety_gate import evaluate_safety
 
-    secret_pat = [
-        r"sk-[a-zA-Z0-9]{20,}",
-        r"(?i)password\s*[:=]\s*\S{6,}",
-        r"(?i)(api[_-]?key|token|secret)\s*[:=]\s*\S+",
-    ]
-    for p in secret_pat:
-        if re.search(p, text):
-            return {"decision": "block", "reason": "secret_detected", "profile": profile}
-
-    if re.search(r"(?i)ignore\s+previous|system\s*:|you\s+are\s+now", text):
-        return {"decision": "block", "reason": "prompt_injection_pattern", "profile": profile}
-
-    dangerous_cmd = any(k in low for k in ["rm -rf", "curl | bash", "mkfs", "dd if="])
-    destructive_action = any(k in action_low for k in ["delete", "remove", "drop", "truncate", "format", "exec"])
-
-    if dangerous_cmd or destructive_action:
-        if profile == "strict":
-            return {"decision": "block", "reason": "destructive_action_in_strict", "profile": profile}
-        if profile == "balanced":
-            return {"decision": "ask", "reason": "destructive_action_requires_approval", "profile": profile}
-        return {"decision": "allow", "reason": "dev_profile_override", "profile": profile}
-
-    return {"decision": "allow", "reason": "no_risk_signal", "profile": profile}
+    result = evaluate_safety(action=action, content=content, profile=profile)
+    return {"decision": result["decision"], "reason": result["reason"], "profile": result["profile"]}
 
 
 def health_report(root: Path) -> dict:

@@ -4,15 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aegisforge"
-version = "0.3.2"
-description = "Agent Reliability OS with causal memory, verifiable safety gate, and benchmark pack"
-requires-python = ">=3.9"
+version = "0.4.0"
+description = "Agent Reliability OS — SDK, MCP server, causal memory, safety gate, recovery learning"
+requires-python = ">=3.10"
+license = {text = "MIT"}
 
 [project.scripts]
 aegisforge = "aegisforge.cli:main"
+aegisforge-mcp = "aegisforge.mcp_server:main"
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.0"]
+all = ["mcp>=1.0"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

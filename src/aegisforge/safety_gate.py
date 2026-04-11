@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import unicodedata
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,9 +23,13 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize(text: str) -> str:
+    return unicodedata.normalize("NFKC", text)
+
+
 def evaluate_safety(action: str, content: str, profile: str = "balanced") -> dict:
-    action_low = (action or "").lower()
-    text = content or ""
+    action_low = _normalize(action or "").lower()
+    text = _normalize(content or "")
     low = text.lower()
 
     evidence = []

@@ -24,7 +24,7 @@ def quality_check(
         bench_rows.append(row)
 
     avg_adaptive = sum(r["adaptive_success_rate"] for r in bench_rows) / len(bench_rows)
-    avg_lift_pct = sum(r["relative_lift_pct"] for r in bench_rows) / len(bench_rows)
+    avg_lift_pct = sum(r.get("relative_lift_pct") or 0.0 for r in bench_rows) / len(bench_rows)
 
     health = health_report(root)
 
