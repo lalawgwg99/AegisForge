@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "aegisforge": {
+      "command": "python",
+      "args": ["-m", "aegisforge.mcp_server"],
+      "env": {
+        "AEGISFORGE_ROOT": ".aegisforge"
+      }
+    }
+  }
+}
