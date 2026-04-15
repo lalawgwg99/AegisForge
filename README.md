@@ -147,6 +147,55 @@ aegisforge benchmark-pack --rounds 300
 
 ---
 
+## Hermes / OpenClaw 接入檢查清單
+
+上線前請逐項確認：
+
+1. 使用獨立資料根目錄（不要共用同一個 `.aegisforge`）。
+2. 預設 profile 用 `balanced`（不要一開始就 `dev`）。
+3. 先完成一輪 smoke test：`safety-check`、`capture -> distill -> inject`、`recover + record_outcome`。
+4. 外部日誌匯入前先對齊欄位映射（`message` / `error_type` / `source`）。
+5. 在執行層保留權限邊界（容器或最小系統權限），不要只依賴安全閘門。
+6. Dev / Staging / Prod 分離 root 路徑，避免訓練資料互相污染。
+
+### 最小設定範本：Hermes
+
+```json
+{
+  "mcpServers": {
+    "aegisforge": {
+      "command": "python",
+      "args": ["-m", "aegisforge.mcp_server"],
+      "env": {
+        "AEGISFORGE_ROOT": ".aegisforge-hermes",
+        "AEGISFORGE_PROFILE": "balanced"
+      }
+    }
+  }
+}
+```
+
+### 最小設定範本：OpenClaw
+
+```json
+{
+  "mcpServers": {
+    "aegisforge": {
+      "command": "python",
+      "args": ["-m", "aegisforge.mcp_server"],
+      "env": {
+        "AEGISFORGE_ROOT": ".aegisforge-openclaw",
+        "AEGISFORGE_PROFILE": "balanced"
+      }
+    }
+  }
+}
+```
+
+備註：`AEGISFORGE_PROFILE` 主要是接入層統一管理參數用；實際決策仍以呼叫 `safety_check(..., profile=...)` 的參數為準。
+
+---
+
 ## LLM 教訓萃取（可選）
 
 預設用模板萃取；啟用後可用 LLM 抽出更精準教訓，失敗會自動 fallback 模板。
@@ -279,6 +328,8 @@ src/aegisforge/
 - SDK loop: `examples/sdk_agent_loop.py`
 - Import + distill: `examples/import_then_distill.py`
 - MCP config: `examples/mcp_setup_example.json`
+- Hermes MCP config: `examples/hermes_mcp_config.json`
+- OpenClaw MCP config: `examples/openclaw_mcp_config.json`
 
 ## Changelog
 

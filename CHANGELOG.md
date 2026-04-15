@@ -9,9 +9,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 ### Added
 - GitHub Actions CI workflow for tests and quality gate.
 - Executable examples under `examples/` for SDK loop, log import, and MCP setup.
+- `SECURITY.md` with vulnerability reporting and supported-version policy.
+- Release workflow for PyPI publish and GitHub tag release notes.
+- PR template and issue templates (bug report, feature request, security contact link).
+- Hermes/OpenClaw integration checklist and minimal MCP config examples.
 
 ### Changed
 - README now links to examples and changelog for faster onboarding.
+- CI now includes lint (`ruff`) and type checks (`mypy`) before tests and quality gate.
 
 ## [0.4.0] - 2026-04-11
 
