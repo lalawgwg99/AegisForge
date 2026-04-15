@@ -92,7 +92,7 @@ def _decision_log_path(root: Path) -> Path:
 def safety_check(root: Path, action: str, content: str, profile: str = "balanced") -> dict:
     evaluated = evaluate_safety(action=action, content=content, profile=profile)
     decision_id = str(uuid.uuid4())
-    input_fingerprint = hashlib.sha256(f"{profile}\n{action}\n{content}".encode("utf-8")).hexdigest()
+    input_fingerprint = hashlib.sha256(f"{profile}\n{action}\n{content}".encode()).hexdigest()
 
     row = {
         "decision_id": decision_id,

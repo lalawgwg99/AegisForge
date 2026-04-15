@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
+from .benchmark_pack import run_benchmark_pack
+from .causal_lane import distill_causal_lanes, preflight_guardrails
 from .core import (
     apply_forgetting,
     capture_failure,
@@ -12,19 +14,17 @@ from .core import (
     inject_lessons,
     policy_decision,
 )
+from .dream_mode import complete_action, generate_dream_report, list_actions
+from .llm_extract import distill_with_llm
+from .log_import import import_agent_log
+from .quality import quality_check
 from .recovery_graph import (
     benchmark_recovery_learning,
     propose_recovery_plan,
     record_recovery_outcome,
     recovery_report,
 )
-from .causal_lane import distill_causal_lanes, preflight_guardrails
-from .log_import import import_agent_log
-from .llm_extract import distill_with_llm
-from .quality import quality_check
 from .safety_gate import replay_safety_decision, safety_check
-from .benchmark_pack import run_benchmark_pack
-from .dream_mode import complete_action, generate_dream_report, list_actions
 
 
 def _parse_bool_flag(value: str) -> bool:

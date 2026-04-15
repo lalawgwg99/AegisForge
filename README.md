@@ -267,6 +267,12 @@ PYTHONPATH=src pytest -q
 PYTHONPATH=src python -m aegisforge.cli quality-check --rounds 300
 ```
 
+### 一鍵 Preflight（建議 PR 前執行）
+
+```bash
+bash scripts/preflight.sh
+```
+
 ---
 
 ## 常見問題（Troubleshooting）

@@ -5,6 +5,7 @@ import uuid
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from .storage import ensure_root, read_jsonl, write_json
 
@@ -61,7 +62,7 @@ def distill_causal_lanes(root: Path, max_lanes: int = 8, min_support: int = 2) -
     ensure_root(root)
     events = read_jsonl(root / "events" / "error-seeds.jsonl")
     if not events:
-        payload = {"generated_at": _now(), "lanes": []}
+        payload: dict[str, Any] = {"generated_at": _now(), "lanes": []}
         write_json(_lane_path(root), payload)
         return payload
 
@@ -104,7 +105,7 @@ def preflight_guardrails(root: Path, action: str, content: str = "", top_k: int 
     action_low = action.lower()
     content_low = (content or "").lower()
 
-    lane_payload = {"lanes": []}
+    lane_payload: dict[str, Any] = {"lanes": []}
     lane_file = _lane_path(root)
     if lane_file.exists():
         import json

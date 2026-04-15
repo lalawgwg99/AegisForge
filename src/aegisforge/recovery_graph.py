@@ -58,7 +58,7 @@ def propose_recovery_plan(
         _ensure_strategy_bucket(data, failure_class, s)
 
     buckets = data["failure_classes"][failure_class]["strategies"]
-    ranked = []
+    ranked: list[dict[str, str | int | float]] = []
     for s in clean_strategies:
         b = buckets[s]
         ranked.append(
@@ -71,7 +71,10 @@ def propose_recovery_plan(
             }
         )
 
-    ranked.sort(key=lambda x: (x["score"], x["successes"], -x["failures"]), reverse=True)
+    ranked.sort(
+        key=lambda x: (x["score"], x["successes"], -int(x["failures"])),
+        reverse=True,
+    )
 
     chosen = ranked[0]["strategy"]
     mode = "exploit"

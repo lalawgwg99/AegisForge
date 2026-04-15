@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import subprocess
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import uuid
 
 from .core import health_report, inject_lessons
 from .recovery_graph import recovery_report

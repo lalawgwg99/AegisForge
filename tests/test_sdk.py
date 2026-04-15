@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -143,8 +144,8 @@ class TestLogImport:
 class TestLLMExtract:
     def test_fallback_to_template(self):
         """When LLM is unreachable, falls back to template extraction."""
-        from aegisforge.llm_extract import distill_with_llm
         from aegisforge.core import capture_failure
+        from aegisforge.llm_extract import distill_with_llm
         capture_failure(ROOT, "tool", "timeout", "request timeout 30s")
         capture_failure(ROOT, "tool", "timeout", "upstream timeout")
         lessons = distill_with_llm(ROOT, max_lessons=3, api_url="http://localhost:99999/v1")
@@ -155,3 +156,67 @@ class TestLLMExtract:
         assert _extract_json_array('["a","b"]') == ["a", "b"]
         assert _extract_json_array('```json\n["a"]\n```') == ["a"]
         assert _extract_json_array("not json") is None
+
+    def test_call_llm_retries_on_timeout_then_success(self, monkeypatch):
+        from aegisforge.llm_extract import _call_llm
+
+        class _FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"choices":[{"message":{"content":"[\\"Use retry\\"]"}}]}'
+
+        state = {"count": 0}
+
+        def _fake_urlopen(req, timeout):
+            state["count"] += 1
+            if state["count"] < 3:
+                raise urllib.error.URLError(TimeoutError("timed out"))
+            return _FakeResp()
+
+        sleeps = []
+        monkeypatch.setattr("aegisforge.llm_extract.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("aegisforge.llm_extract.urllib.request.urlopen", _fake_urlopen)
+
+        output = _call_llm(
+            messages=[{"role": "user", "content": "x"}],
+            api_url="http://localhost:11434/v1",
+            api_key="",
+            model="test-model",
+        )
+        assert output is not None
+        assert state["count"] == 3
+        assert sleeps == [1.0, 2.0]
+
+    def test_call_llm_fail_fast_on_unauthorized(self, monkeypatch):
+        from aegisforge.llm_extract import _call_llm
+
+        state = {"count": 0}
+
+        def _fake_urlopen(req, timeout):
+            state["count"] += 1
+            raise urllib.error.HTTPError(
+                url="http://localhost",
+                code=401,
+                msg="unauthorized",
+                hdrs=None,
+                fp=None,
+            )
+
+        sleeps = []
+        monkeypatch.setattr("aegisforge.llm_extract.time.sleep", lambda s: sleeps.append(s))
+        monkeypatch.setattr("aegisforge.llm_extract.urllib.request.urlopen", _fake_urlopen)
+
+        output = _call_llm(
+            messages=[{"role": "user", "content": "x"}],
+            api_url="http://localhost:11434/v1",
+            api_key="bad-token",
+            model="test-model",
+        )
+        assert output is None
+        assert state["count"] == 1
+        assert sleeps == []

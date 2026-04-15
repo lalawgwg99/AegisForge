@@ -56,7 +56,6 @@ from .safety_gate import replay_safety_decision, safety_check
 
 mcp = FastMCP(
     "aegisforge",
-    description="Agent Reliability OS: safety gate, causal memory, recovery learning",
 )
 
 

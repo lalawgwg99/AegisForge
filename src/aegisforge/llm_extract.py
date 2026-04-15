@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.request
+import time
 import urllib.error
+import urllib.request
+import uuid
 from collections import Counter
 from pathlib import Path
 
 from .core import _find_semantic_duplicate, ts
 from .storage import ensure_root, read_jsonl, write_jsonl
-import uuid
-
 
 _SYSTEM_PROMPT = """\
 You are an expert at extracting actionable lessons from software failure events.
@@ -44,8 +44,10 @@ def _call_llm(
     api_url: str,
     api_key: str,
     model: str,
+    max_retries: int = 3,
+    backoff_seconds: tuple[float, ...] = (1.0, 2.0, 4.0),
 ) -> str | None:
-    """Call an OpenAI-compatible chat completions API."""
+    """Call an OpenAI-compatible chat completions API with retry/backoff."""
     url = api_url.rstrip("/")
     if not url.endswith("/chat/completions"):
         url = url.rstrip("/") + "/chat/completions"
@@ -62,12 +64,39 @@ def _call_llm(
     }).encode("utf-8")
 
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data["choices"][0]["message"]["content"].strip()
-    except (urllib.error.URLError, KeyError, json.JSONDecodeError, TimeoutError):
-        return None
+    attempts = max(1, max_retries)
+
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["choices"][0]["message"]["content"].strip()
+        except urllib.error.HTTPError as error:
+            # 401/403 should fail fast; retrying won't fix invalid auth/scope.
+            if error.code in {401, 403}:
+                return None
+            if error.code >= 500 and attempt < attempts - 1:
+                wait = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
+                time.sleep(wait)
+                continue
+            return None
+        except urllib.error.URLError as error:
+            reason = getattr(error, "reason", None)
+            is_timeout = isinstance(reason, TimeoutError)
+            if is_timeout and attempt < attempts - 1:
+                wait = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
+                time.sleep(wait)
+                continue
+            return None
+        except TimeoutError:
+            if attempt < attempts - 1:
+                wait = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
+                time.sleep(wait)
+                continue
+            return None
+        except (KeyError, json.JSONDecodeError):
+            return None
+    return None
 
 
 def _extract_json_array(text: str) -> list[str] | None:
@@ -161,7 +190,7 @@ def distill_with_llm(
             dup["source_errors"] = int(dup.get("source_errors", 0)) + 1
             continue
 
-        best_type = max(by_type, key=by_type.get) if by_type else "unknown"
+        best_type = max(by_type, key=lambda error_type: by_type[error_type]) if by_type else "unknown"
 
         lesson = {
             "id": str(uuid.uuid4()),

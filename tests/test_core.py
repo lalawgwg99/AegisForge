@@ -120,7 +120,7 @@ class TestSafetyGate:
         assert r["decision"] == "block"
 
     def test_safety_check_and_replay(self):
-        from aegisforge.safety_gate import safety_check, replay_safety_decision
+        from aegisforge.safety_gate import replay_safety_decision, safety_check
         r = safety_check(ROOT, "delete db", "DROP TABLE x", "strict")
         assert r["decision"] == "block"
         replay = replay_safety_decision(ROOT, r["decision_id"])
@@ -157,8 +157,8 @@ class TestRecovery:
 
 class TestCausalLane:
     def test_distill_and_preflight(self):
-        from aegisforge.core import capture_failure
         from aegisforge.causal_lane import distill_causal_lanes, preflight_guardrails
+        from aegisforge.core import capture_failure
         for _ in range(3):
             capture_failure(ROOT, "bench", "timeout", "request timeout 30s")
         result = distill_causal_lanes(ROOT, max_lanes=4, min_support=2)
@@ -196,7 +196,7 @@ class TestForgetting:
         assert r["before"] == 0
 
     def test_forget_stale(self):
-        from aegisforge.core import capture_failure, distill_lessons, apply_forgetting
+        from aegisforge.core import apply_forgetting, capture_failure, distill_lessons
         capture_failure(ROOT, "tool", "timeout", "timeout")
         capture_failure(ROOT, "tool", "timeout", "timeout2")
         distill_lessons(ROOT)
