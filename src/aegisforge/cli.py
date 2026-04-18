@@ -15,7 +15,7 @@ from .core import (
     policy_decision,
 )
 from .dream_mode import complete_action, generate_dream_report, list_actions
-from .llm_extract import distill_with_llm
+from .llm_extract import distill_with_llm, read_llm_extract_stats
 from .log_import import import_agent_log
 from .quality import quality_check
 from .recovery_graph import (
@@ -130,6 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
     dl.add_argument("--api-url", default="", help="OpenAI-compatible API URL")
     dl.add_argument("--api-key", default="", help="API key")
     dl.add_argument("--model", default="", help="model name")
+
+    sub.add_parser("llm-stats", help="show LLM retry/fallback observability metrics")
 
     sub.add_parser("health", help="memory quality report")
     return p
@@ -279,6 +281,11 @@ def main() -> None:
 
     if args.cmd == "health":
         r = health_report(root)
+        _print_result(r)
+        return
+
+    if args.cmd == "llm-stats":
+        r = read_llm_extract_stats(root)
         _print_result(r)
         return
 

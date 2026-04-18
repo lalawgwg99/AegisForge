@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import urllib.error
 from pathlib import Path
@@ -220,3 +221,134 @@ class TestLLMExtract:
         assert output is None
         assert state["count"] == 1
         assert sleeps == []
+
+    def test_call_llm_empty_backoff_does_not_crash(self, monkeypatch):
+        from aegisforge.llm_extract import _call_llm
+
+        attempts = {"count": 0}
+
+        def _fake_urlopen(req, timeout):
+            attempts["count"] += 1
+            raise urllib.error.HTTPError(
+                url="http://localhost",
+                code=503,
+                msg="service unavailable",
+                hdrs=None,
+                fp=None,
+            )
+
+        monkeypatch.setattr("aegisforge.llm_extract.time.sleep", lambda _: None)
+        monkeypatch.setattr("aegisforge.llm_extract.urllib.request.urlopen", _fake_urlopen)
+
+        output = _call_llm(
+            messages=[{"role": "user", "content": "x"}],
+            api_url="http://localhost:11434/v1",
+            api_key="",
+            model="test-model",
+            max_retries=2,
+            backoff_seconds=(),
+        )
+        assert output is None
+        assert attempts["count"] == 2
+
+    def test_call_llm_retries_on_http_429_then_success(self, monkeypatch):
+        from aegisforge.llm_extract import _call_llm
+
+        class _FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"choices":[{"message":{"content":"[\\"Throttle\\"]"}}]}'
+
+        attempts = {"count": 0}
+
+        def _fake_urlopen(req, timeout):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise urllib.error.HTTPError(
+                    url="http://localhost",
+                    code=429,
+                    msg="rate limited",
+                    hdrs=None,
+                    fp=None,
+                )
+            return _FakeResp()
+
+        sleeps: list[float] = []
+        monkeypatch.setattr("aegisforge.llm_extract.time.sleep", lambda seconds: sleeps.append(seconds))
+        monkeypatch.setattr("aegisforge.llm_extract.urllib.request.urlopen", _fake_urlopen)
+
+        output = _call_llm(
+            messages=[{"role": "user", "content": "x"}],
+            api_url="http://localhost:11434/v1",
+            api_key="",
+            model="test-model",
+        )
+        assert output is not None
+        assert attempts["count"] == 2
+        assert sleeps == [1.0]
+
+    def test_call_llm_retries_on_connection_reset_then_success(self, monkeypatch):
+        from aegisforge.llm_extract import _call_llm
+
+        class _FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"choices":[{"message":{"content":"[\\"Reconnect\\"]"}}]}'
+
+        attempts = {"count": 0}
+
+        def _fake_urlopen(req, timeout):
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise urllib.error.URLError(ConnectionResetError("connection reset"))
+            return _FakeResp()
+
+        monkeypatch.setattr("aegisforge.llm_extract.time.sleep", lambda _: None)
+        monkeypatch.setattr("aegisforge.llm_extract.urllib.request.urlopen", _fake_urlopen)
+
+        output = _call_llm(
+            messages=[{"role": "user", "content": "x"}],
+            api_url="http://localhost:11434/v1",
+            api_key="",
+            model="test-model",
+        )
+        assert output is not None
+        assert attempts["count"] == 2
+
+    def test_distill_with_llm_records_observability_stats(self, monkeypatch):
+        from aegisforge.core import capture_failure
+        from aegisforge.llm_extract import distill_with_llm
+
+        class _FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"choices":[{"message":{"content":"[\\"Use retry with limits\\"]"}}]}'
+
+        monkeypatch.setattr("aegisforge.llm_extract.urllib.request.urlopen", lambda req, timeout: _FakeResp())
+        capture_failure(ROOT, "tool", "timeout", "request timeout 30s")
+        capture_failure(ROOT, "tool", "timeout", "upstream timeout")
+
+        lessons = distill_with_llm(ROOT, max_lessons=1, api_url="http://localhost:11434/v1", model="test-model")
+        assert len(lessons) == 1
+
+        stats_path = ROOT / "reports" / "llm-extract-stats.json"
+        assert stats_path.exists()
+        stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        assert stats["totals"]["requests"] >= 1
+        assert stats["totals"]["llm_success"] >= 1
+        assert stats["totals"]["fallback_ratio"] >= 0.0

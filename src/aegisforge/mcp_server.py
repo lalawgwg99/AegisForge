@@ -46,6 +46,7 @@ from .core import (
     health_report,
     inject_lessons,
 )
+from .llm_extract import read_llm_extract_stats
 from .log_import import import_agent_log
 from .recovery_graph import (
     propose_recovery_plan,
@@ -215,6 +216,12 @@ def aegis_health() -> dict:
     Returns counts of errors, lessons, duplicates, and weak lessons.
     """
     return health_report(_root())
+
+
+@mcp.tool()
+def aegis_llm_stats() -> dict:
+    """Get LLM extraction retry/fallback observability metrics."""
+    return read_llm_extract_stats(_root())
 
 
 @mcp.tool()

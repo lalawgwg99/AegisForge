@@ -13,9 +13,19 @@ import urllib.error
 import urllib.request
 import uuid
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 from .core import _find_semantic_duplicate, ts
+from .retry_policy import (
+    RetryPolicy,
+    backoff_for_attempt,
+    classify_http_status,
+    classify_url_error,
+    normalize_backoff_seconds,
+    should_retry_http_status,
+    should_retry_url_error,
+)
 from .storage import ensure_root, read_jsonl, write_jsonl
 
 _SYSTEM_PROMPT = """\
@@ -39,15 +49,87 @@ Example output:
 """
 
 
-def _call_llm(
+@dataclass(frozen=True)
+class LLMCallMeta:
+    attempts: int
+    retries: int
+    error_counts: dict[str, int]
+    succeeded: bool
+    fallback_used: bool = False
+    fallback_reason: str = ""
+
+
+@dataclass(frozen=True)
+class LLMCallResult:
+    content: str | None
+    meta: LLMCallMeta
+
+
+def _accumulate_error(error_counts: dict[str, int], key: str) -> dict[str, int]:
+    updated = dict(error_counts)
+    updated[key] = updated.get(key, 0) + 1
+    return updated
+
+
+def _record_llm_extract_stats(root: Path, meta: LLMCallMeta) -> None:
+    stats_path = root / "reports" / "llm-extract-stats.json"
+    if stats_path.exists():
+        try:
+            stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            stats = {}
+    else:
+        stats = {}
+
+    totals = stats.get("totals", {})
+    requests = int(totals.get("requests", 0)) + 1
+    llm_success = int(totals.get("llm_success", 0)) + int(meta.succeeded and not meta.fallback_used)
+    fallbacks = int(totals.get("fallbacks", 0)) + int(meta.fallback_used)
+    retries = int(totals.get("retries", 0)) + meta.retries
+    attempts = int(totals.get("attempts", 0)) + meta.attempts
+
+    error_classifications = stats.get("error_classifications", {})
+    merged_errors: dict[str, int] = {
+        str(key): int(value)
+        for key, value in error_classifications.items()
+    }
+    for key, value in meta.error_counts.items():
+        merged_errors[key] = merged_errors.get(key, 0) + int(value)
+
+    fallback_reasons = stats.get("fallback_reasons", {})
+    merged_fallback_reasons: dict[str, int] = {
+        str(key): int(value)
+        for key, value in fallback_reasons.items()
+    }
+    if meta.fallback_used:
+        reason = meta.fallback_reason or "unknown"
+        merged_fallback_reasons[reason] = merged_fallback_reasons.get(reason, 0) + 1
+
+    output = {
+        "updated_at": ts(),
+        "totals": {
+            "requests": requests,
+            "llm_success": llm_success,
+            "fallbacks": fallbacks,
+            "fallback_ratio": round(fallbacks / requests, 4),
+            "retries": retries,
+            "attempts": attempts,
+            "avg_attempts_per_request": round(attempts / requests, 4),
+        },
+        "error_classifications": dict(sorted(merged_errors.items())),
+        "fallback_reasons": dict(sorted(merged_fallback_reasons.items())),
+    }
+    stats_path.parent.mkdir(parents=True, exist_ok=True)
+    stats_path.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _call_llm_with_meta(
     messages: list[dict[str, str]],
     api_url: str,
     api_key: str,
     model: str,
-    max_retries: int = 3,
-    backoff_seconds: tuple[float, ...] = (1.0, 2.0, 4.0),
-) -> str | None:
-    """Call an OpenAI-compatible chat completions API with retry/backoff."""
+    policy: RetryPolicy,
+) -> LLMCallResult:
     url = api_url.rstrip("/")
     if not url.endswith("/chat/completions"):
         url = url.rstrip("/") + "/chat/completions"
@@ -64,39 +146,131 @@ def _call_llm(
     }).encode("utf-8")
 
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-    attempts = max(1, max_retries)
+    retries = 0
+    attempts = 0
+    error_counts: dict[str, int] = {}
 
-    for attempt in range(attempts):
+    for attempt in range(policy.attempts):
+        attempts += 1
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                return data["choices"][0]["message"]["content"].strip()
+                content = data["choices"][0]["message"]["content"].strip()
+                return LLMCallResult(
+                    content=content,
+                    meta=LLMCallMeta(
+                        attempts=attempts,
+                        retries=retries,
+                        error_counts=error_counts,
+                        succeeded=True,
+                    ),
+                )
         except urllib.error.HTTPError as error:
-            # 401/403 should fail fast; retrying won't fix invalid auth/scope.
+            error_counts = _accumulate_error(error_counts, classify_http_status(error.code))
             if error.code in {401, 403}:
-                return None
-            if error.code >= 500 and attempt < attempts - 1:
-                wait = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-                time.sleep(wait)
+                return LLMCallResult(
+                    content=None,
+                    meta=LLMCallMeta(
+                        attempts=attempts,
+                        retries=retries,
+                        error_counts=error_counts,
+                        succeeded=False,
+                        fallback_used=True,
+                        fallback_reason="auth",
+                    ),
+                )
+            if should_retry_http_status(error.code, policy) and attempt < policy.attempts - 1:
+                retries += 1
+                time.sleep(backoff_for_attempt(policy.backoff_seconds, attempt))
                 continue
-            return None
+            return LLMCallResult(
+                content=None,
+                meta=LLMCallMeta(
+                    attempts=attempts,
+                    retries=retries,
+                    error_counts=error_counts,
+                    succeeded=False,
+                    fallback_used=True,
+                    fallback_reason=classify_http_status(error.code),
+                ),
+            )
         except urllib.error.URLError as error:
             reason = getattr(error, "reason", None)
-            is_timeout = isinstance(reason, TimeoutError)
-            if is_timeout and attempt < attempts - 1:
-                wait = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-                time.sleep(wait)
+            error_counts = _accumulate_error(error_counts, classify_url_error(reason))
+            if should_retry_url_error(reason) and attempt < policy.attempts - 1:
+                retries += 1
+                time.sleep(backoff_for_attempt(policy.backoff_seconds, attempt))
                 continue
-            return None
+            return LLMCallResult(
+                content=None,
+                meta=LLMCallMeta(
+                    attempts=attempts,
+                    retries=retries,
+                    error_counts=error_counts,
+                    succeeded=False,
+                    fallback_used=True,
+                    fallback_reason=classify_url_error(reason),
+                ),
+            )
         except TimeoutError:
-            if attempt < attempts - 1:
-                wait = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
-                time.sleep(wait)
+            error_counts = _accumulate_error(error_counts, "timeout")
+            if attempt < policy.attempts - 1:
+                retries += 1
+                time.sleep(backoff_for_attempt(policy.backoff_seconds, attempt))
                 continue
-            return None
+            return LLMCallResult(
+                content=None,
+                meta=LLMCallMeta(
+                    attempts=attempts,
+                    retries=retries,
+                    error_counts=error_counts,
+                    succeeded=False,
+                    fallback_used=True,
+                    fallback_reason="timeout",
+                ),
+            )
         except (KeyError, json.JSONDecodeError):
-            return None
-    return None
+            error_counts = _accumulate_error(error_counts, "malformed_response")
+            return LLMCallResult(
+                content=None,
+                meta=LLMCallMeta(
+                    attempts=attempts,
+                    retries=retries,
+                    error_counts=error_counts,
+                    succeeded=False,
+                    fallback_used=True,
+                    fallback_reason="malformed_response",
+                ),
+            )
+
+    return LLMCallResult(
+        content=None,
+        meta=LLMCallMeta(
+            attempts=attempts,
+            retries=retries,
+            error_counts=error_counts,
+            succeeded=False,
+            fallback_used=True,
+            fallback_reason="exhausted_retries",
+        ),
+    )
+
+
+def _call_llm(
+    messages: list[dict[str, str]],
+    api_url: str,
+    api_key: str,
+    model: str,
+    max_retries: int = 3,
+    backoff_seconds: tuple[float, ...] = (1.0, 2.0, 4.0),
+) -> str | None:
+    """Call an OpenAI-compatible chat completions API with retry/backoff."""
+    policy = RetryPolicy(
+        max_retries=max_retries,
+        backoff_seconds=normalize_backoff_seconds(backoff_seconds),
+    )
+    result = _call_llm_with_meta(messages, api_url=api_url, api_key=api_key, model=model, policy=policy)
+    return result.content
 
 
 def _extract_json_array(text: str) -> list[str] | None:
@@ -137,11 +311,11 @@ def extract_lessons_from_errors(
         {"role": "user", "content": f"Extract up to {max_lessons} lessons from these errors:\n{events_text}"},
     ]
 
-    raw = _call_llm(messages, api_url=api_url, api_key=api_key, model=model)
-    if raw is None:
+    policy = RetryPolicy(max_retries=3, backoff_seconds=normalize_backoff_seconds((1.0, 2.0, 4.0)))
+    result = _call_llm_with_meta(messages, api_url=api_url, api_key=api_key, model=model, policy=policy)
+    if result.content is None:
         return None
-
-    return _extract_json_array(raw)
+    return _extract_json_array(result.content)
 
 
 def distill_with_llm(
@@ -169,13 +343,48 @@ def distill_with_llm(
 
     existing = read_jsonl(root / "lessons" / "active.jsonl")
 
-    llm_lessons = extract_lessons_from_errors(
-        errors, api_url=api_url, api_key=api_key, model=model, max_lessons=max_lessons,
+    call_result = _call_llm_with_meta(
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"Extract up to {max_lessons} lessons from these errors:\n"
+                    + json.dumps(
+                        [
+                            {
+                                "error_type": error.get("error_type", ""),
+                                "message": error.get("message", ""),
+                            }
+                            for error in errors[-20:]
+                        ],
+                        ensure_ascii=False,
+                    )
+                ),
+            },
+        ],
+        api_url=api_url,
+        api_key=api_key,
+        model=model,
+        policy=RetryPolicy(max_retries=3, backoff_seconds=normalize_backoff_seconds((1.0, 2.0, 4.0))),
     )
+    llm_lessons = _extract_json_array(call_result.content) if call_result.content else None
 
     if llm_lessons is None:
+        _record_llm_extract_stats(root, call_result.meta)
         from .core import distill_lessons
         return distill_lessons(root, max_lessons=max_lessons)
+    _record_llm_extract_stats(
+        root,
+        LLMCallMeta(
+            attempts=call_result.meta.attempts,
+            retries=call_result.meta.retries,
+            error_counts=call_result.meta.error_counts,
+            succeeded=True,
+            fallback_used=False,
+            fallback_reason="",
+        ),
+    )
 
     by_type = Counter(e.get("error_type", "unknown") for e in errors)
     created: list[dict] = []
@@ -211,3 +420,39 @@ def distill_with_llm(
         write_jsonl(root / "lessons" / "active.jsonl", existing)
 
     return created
+
+
+def read_llm_extract_stats(root: Path) -> dict:
+    stats_path = root / "reports" / "llm-extract-stats.json"
+    if not stats_path.exists():
+        return {
+            "updated_at": "",
+            "totals": {
+                "requests": 0,
+                "llm_success": 0,
+                "fallbacks": 0,
+                "fallback_ratio": 0.0,
+                "retries": 0,
+                "attempts": 0,
+                "avg_attempts_per_request": 0.0,
+            },
+            "error_classifications": {},
+            "fallback_reasons": {},
+        }
+    try:
+        return json.loads(stats_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {
+            "updated_at": ts(),
+            "totals": {
+                "requests": 0,
+                "llm_success": 0,
+                "fallbacks": 0,
+                "fallback_ratio": 0.0,
+                "retries": 0,
+                "attempts": 0,
+                "avg_attempts_per_request": 0.0,
+            },
+            "error_classifications": {},
+            "fallback_reasons": {"malformed_stats_file": 1},
+        }

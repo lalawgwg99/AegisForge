@@ -14,6 +14,7 @@ from .core import (
     health_report,
     inject_lessons,
 )
+from .llm_extract import read_llm_extract_stats
 from .log_import import import_agent_log
 from .recovery_graph import (
     benchmark_recovery_learning,
@@ -261,6 +262,10 @@ class AegisForge:
     def health(self) -> dict[str, Any]:
         """Get memory quality report."""
         return health_report(self.root)
+
+    def llm_stats(self) -> dict[str, Any]:
+        """Get LLM extraction observability metrics."""
+        return read_llm_extract_stats(self.root)
 
     def forget(self, max_lessons: int = 50, stale_days: int = 30) -> dict[str, Any]:
         """Apply forgetting curve to lessons."""

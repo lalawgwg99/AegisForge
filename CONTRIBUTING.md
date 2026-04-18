@@ -13,9 +13,18 @@ Thanks for contributing to Agent Fusion OS.
 - keeps architecture modular
 - includes tests/validation scripts when possible
 - updates docs for behavior changes
+- runs `bash scripts/preflight.sh`
+- keeps SDK/MCP behavior contract stable (`pytest -q tests/test_contracts.py`)
 
 ## Principles
 - reliability first
 - measurable outcomes over claims
 - model/provider neutrality
 - security by default
+
+## Release readiness
+Before publishing a version tag, run:
+
+```bash
+bash scripts/release_gate.sh
+```

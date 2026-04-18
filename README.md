@@ -108,6 +108,9 @@ aegisforge import-log --path custom.jsonl --field-map '{"message":"msg","error_t
 # 驗收
 aegisforge quality-check --rounds 300
 aegisforge benchmark-pack --rounds 300
+
+# LLM observability
+aegisforge llm-stats
 ```
 
 ---
@@ -142,6 +145,7 @@ aegisforge benchmark-pack --rounds 300
 - `aegis_recovery_stats`
 - `aegis_causal_distill`
 - `aegis_health`
+- `aegis_llm_stats`
 - `aegis_forget`
 - `aegis_import_log`
 
@@ -273,6 +277,12 @@ PYTHONPATH=src python -m aegisforge.cli quality-check --rounds 300
 bash scripts/preflight.sh
 ```
 
+### Hermes install smoke test
+
+```bash
+AEGISFORGE_RUN_INTEGRATION=1 pytest -q tests/test_hermes_integration.py
+```
+
 ---
 
 ## 常見問題（Troubleshooting）
@@ -328,6 +338,7 @@ src/aegisforge/
 - Roadmap: `docs/roadmap.md`
 - Breakthrough PoC: `docs/breakthrough-poc-14d.md`
 - Problem map: `docs/problem-map.md`
+- Release playbook: `docs/release-playbook.md`
 
 ## 範例
 
