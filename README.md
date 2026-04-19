@@ -7,12 +7,12 @@
 
 AegisForge 提供三種接入方式：
 - Python SDK（最推薦，整合成本最低）
-- MCP Tool Server（給 Claude Code / AI IDE 直接呼叫）
-- CLI（腳本化與驗收流程）
+- MCP Tool Server（給 Claude Code / AI IDE / Hermes 類 Agent 平台呼叫）
+- CLI（腳本化、CI、驗收與治理）
 
 ---
 
-## 你會得到什麼
+## 核心能力
 
 AegisForge 主要解決 4 件事：
 1. **Safety Gate**：先判斷高風險操作（allow / ask / block）。
@@ -22,43 +22,51 @@ AegisForge 主要解決 4 件事：
 
 ---
 
-## 3 分鐘快速開始（SDK）
+## 安裝方式
 
-### 1) 安裝
+### 需求
+- Python 3.10+
+
+### 依場景選擇安裝
 
 ```bash
+# 核心功能（SDK + CLI）
 pip install -e .
-# 或：pip install -e '.[mcp]'   # 需要 MCP server
-# 或：pip install -e '.[all]'   # 全部功能
+
+# 需要 MCP server
+pip install -e '.[mcp]'
+
+# 完整功能（建議 CI / 開發環境）
+pip install -e '.[all,dev]'
 ```
 
-需求：Python 3.10+
+---
 
-### 2) 最小可跑範例
+## 3 分鐘快速開始（SDK）
 
 ```python
 from aegisforge import AegisForge
 
 af = AegisForge(".aegisforge")
 
-# 1. 安全檢查
+# 1) 安全檢查
 safety = af.safety_check("delete production table", "DROP TABLE users", profile="balanced")
 if safety.blocked:
     raise RuntimeError(f"Blocked: {safety.reason}")
 if safety.needs_approval:
     print(f"需要人工確認: {safety.reason}")
 
-# 2. 捕捉失敗 -> 提煉教訓 -> 注入
+# 2) 捕捉失敗 -> 提煉教訓 -> 注入
 af.capture("tool", "timeout", "request timeout after 30s")
 af.distill(max_lessons=3)
 print(af.inject(top_k=3))
 
-# 3. 恢復策略學習
+# 3) 恢復策略學習
 plan = af.recover("timeout", ["retry_backoff", "restart_worker", "escalate_human"])
 print(plan.chosen_strategy, plan.mode)
 af.record_outcome("timeout", plan.chosen_strategy, success=True)
 
-# 4. 建立因果 lane + 任務前防呆
+# 4) 建立因果 lane + 任務前防呆
 af.causal_distill(max_lanes=8, min_support=2)
 preflight = af.preflight("run sync job", "api token timeout config", top_k=4)
 print(preflight.brief)
@@ -71,7 +79,7 @@ print(preflight.brief)
 | 場景 | 建議 |
 |---|---|
 | 你在寫 Python Agent / 後端服務 | SDK |
-| 你要讓 Claude Code / IDE 直接呼叫功能 | MCP Server |
+| 你要讓 Claude Code / IDE / Hermes 直接呼叫功能 | MCP Server |
 | 你要做 shell 腳本、CI 驗收、批次流程 | CLI |
 
 ---
@@ -109,13 +117,13 @@ aegisforge import-log --path custom.jsonl --field-map '{"message":"msg","error_t
 aegisforge quality-check --rounds 300
 aegisforge benchmark-pack --rounds 300
 
-# LLM observability
+# LLM 觀測統計
 aegisforge llm-stats
 ```
 
 ---
 
-## MCP Server（Claude Code / AI IDE）
+## MCP Server（Claude Code / AI IDE / Hermes）
 
 在 `~/.claude/settings.json` 或專案 `.mcp.json` 加入：
 
@@ -133,7 +141,7 @@ aegisforge llm-stats
 }
 ```
 
-可用工具：
+### MCP Tools 一覽
 - `aegis_safety_check`
 - `aegis_safety_replay`
 - `aegis_preflight`
@@ -151,18 +159,15 @@ aegisforge llm-stats
 
 ---
 
-## Hermes / OpenClaw 接入檢查清單
+## Hermes 上線指南（建議照順序）
 
-上線前請逐項確認：
-
+### 1) 基本接入檢查
 1. 使用獨立資料根目錄（不要共用同一個 `.aegisforge`）。
 2. 預設 profile 用 `balanced`（不要一開始就 `dev`）。
-3. 先完成一輪 smoke test：`safety-check`、`capture -> distill -> inject`、`recover + record_outcome`。
-4. 外部日誌匯入前先對齊欄位映射（`message` / `error_type` / `source`）。
-5. 在執行層保留權限邊界（容器或最小系統權限），不要只依賴安全閘門。
-6. Dev / Staging / Prod 分離 root 路徑，避免訓練資料互相污染。
+3. Dev / Staging / Prod 分離 root 路徑，避免訓練資料互相污染。
+4. 執行層保留權限邊界（容器 / 最小系統權限），不要只依賴安全閘門。
 
-### 最小設定範本：Hermes
+### 2) Hermes MCP 設定範本
 
 ```json
 {
@@ -179,30 +184,29 @@ aegisforge llm-stats
 }
 ```
 
-### 最小設定範本：OpenClaw
+### 3) 上線前 smoke test（最小必跑）
 
-```json
-{
-  "mcpServers": {
-    "aegisforge": {
-      "command": "python",
-      "args": ["-m", "aegisforge.mcp_server"],
-      "env": {
-        "AEGISFORGE_ROOT": ".aegisforge-openclaw",
-        "AEGISFORGE_PROFILE": "balanced"
-      }
-    }
-  }
-}
+```bash
+aegisforge --root .aegisforge-hermes safety-check --action "delete table" --content "DROP TABLE users"
+aegisforge --root .aegisforge-hermes capture --source hermes --type timeout --message "request timeout 30s"
+aegisforge --root .aegisforge-hermes distill --max 3
+aegisforge --root .aegisforge-hermes inject --top-k 3
+aegisforge --root .aegisforge-hermes recover-plan --failure-class timeout --strategies retry_backoff restart_worker escalate_human
 ```
 
-備註：`AEGISFORGE_PROFILE` 主要是接入層統一管理參數用；實際決策仍以呼叫 `safety_check(..., profile=...)` 的參數為準。
+### 4) CI 同步整合測試
+
+```bash
+AEGISFORGE_RUN_INTEGRATION=1 pytest -q tests/test_hermes_integration.py
+```
+
+備註：`AEGISFORGE_PROFILE` 主要是接入層統一管理；實際決策仍以 `safety_check(..., profile=...)` 參數為準。
 
 ---
 
 ## LLM 教訓萃取（可選）
 
-預設用模板萃取；啟用後可用 LLM 抽出更精準教訓，失敗會自動 fallback 模板。
+預設用模板萃取；啟用後可用 LLM 抽出更精準教訓，失敗會 fallback。
 
 ```python
 from aegisforge import AegisForge, LLMConfig
@@ -225,18 +229,40 @@ export AEGISFORGE_LLM_MODEL=gemma4:e4b
 export AEGISFORGE_LLM_KEY=sk-xxx  # Ollama 可省略
 ```
 
+### Retry / Fallback 行為
+- 401 / 403：快速失敗（不重試）
+- 429、5xx、常見 transient 網路錯誤：重試 + backoff
+- LLM 不可用時：回退到模板萃取
+
+### 觀測指標
+
+```bash
+aegisforge llm-stats
+```
+
+你會看到：
+- `requests`
+- `llm_success`
+- `fallbacks` / `fallback_ratio`
+- `retries` / `avg_attempts_per_request`
+- `error_classifications`
+- `fallback_reasons`
+
 ---
 
 ## 外部日誌匯入
 
-支援 JSONL 與純文字；會自動偵測錯誤行並分類常見錯誤類型。
+支援 JSONL 與純文字，會自動偵測錯誤行並分類常見錯誤類型。
 
 ```python
-af.import_log("custom.jsonl", field_map={
-    "message": "msg",
-    "error_type": "severity",
-    "source": "component",
-})
+af.import_log(
+    "custom.jsonl",
+    field_map={
+        "message": "msg",
+        "error_type": "severity",
+        "source": "component",
+    },
+)
 ```
 
 ---
@@ -271,35 +297,45 @@ PYTHONPATH=src pytest -q
 PYTHONPATH=src python -m aegisforge.cli quality-check --rounds 300
 ```
 
-### 一鍵 Preflight（建議 PR 前執行）
+### 一鍵 preflight
 
 ```bash
 bash scripts/preflight.sh
 ```
 
-### Hermes install smoke test
+### Release gate（發佈前必跑）
 
 ```bash
-AEGISFORGE_RUN_INTEGRATION=1 pytest -q tests/test_hermes_integration.py
+bash scripts/release_gate.sh
 ```
 
 ---
 
-## 常見問題（Troubleshooting）
+## 發佈與回滾
+
+- 發佈治理：`scripts/release_gate.sh`
+- 回滾流程：`docs/release-playbook.md`
+- GitHub Release workflow 會先跑 gate，再進行 build/publish
+
+---
+
+## Troubleshooting
 
 ### `ModuleNotFoundError: No module named 'aegisforge'`
 
-你在 repo 根目錄直接跑測試時，通常要二選一：
+在 repo 根目錄跑測試時，通常二選一：
 1. `pip install -e .`
 2. `PYTHONPATH=src pytest -q`
 
 ### MCP 啟動失敗：`No module named mcp`
 
-請安裝：
-
 ```bash
 pip install -e '.[mcp]'
 ```
+
+### 看不到 LLM 指標
+
+先跑一次 `distill-llm` 或 SDK `distill()`（啟用 LLM），才會生成 `.aegisforge/reports/llm-extract-stats.json`。
 
 ---
 
@@ -315,6 +351,7 @@ src/aegisforge/
 ├── recovery_graph.py
 ├── causal_lane.py
 ├── llm_extract.py
+├── retry_policy.py
 ├── log_import.py
 ├── quality.py
 ├── benchmark_pack.py
@@ -329,32 +366,27 @@ src/aegisforge/
 - `causal/lanes.json`
 - `policy/decisions.jsonl`
 - `reports/benchmark-report.md`
+- `reports/llm-extract-stats.json`
 
 ---
 
-## 文件與路線圖
+## 文件與範例
 
 - Architecture: `docs/architecture.md`
 - Roadmap: `docs/roadmap.md`
 - Breakthrough PoC: `docs/breakthrough-poc-14d.md`
 - Problem map: `docs/problem-map.md`
 - Release playbook: `docs/release-playbook.md`
-
-## 範例
-
 - SDK loop: `examples/sdk_agent_loop.py`
 - Import + distill: `examples/import_then_distill.py`
 - MCP config: `examples/mcp_setup_example.json`
 - Hermes MCP config: `examples/hermes_mcp_config.json`
 - OpenClaw MCP config: `examples/openclaw_mcp_config.json`
 
-## Changelog
-
-- `CHANGELOG.md`
-
 ---
 
-## 版本與授權
+## Changelog / Version / License
 
+- Changelog: `CHANGELOG.md`
 - Version: `v0.4.0`
 - License: MIT
