@@ -7,3 +7,4 @@ coverage/
 .aegisforge/
 __pycache__/
 *.pyc
+*.egg-info/
