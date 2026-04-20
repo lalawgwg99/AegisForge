@@ -92,6 +92,28 @@ def _parse_line(line: str) -> dict | None:
     return None
 
 
+def _parse_line_jsonl(line: str) -> dict | None:
+    """Parse a single JSONL line only."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return row if isinstance(row, dict) else None
+
+
+def _parse_line_text(line: str) -> dict | None:
+    """Parse a single text line only."""
+    line = line.strip()
+    if not line:
+        return None
+    if _ERROR_KEYWORDS.search(line):
+        return {"message": line, "source": "log", "error_type": "unknown"}
+    return None
+
+
 def import_agent_log(
     root: Path,
     path: Path,
@@ -116,6 +138,15 @@ def import_agent_log(
     ensure_root(root)
     fmap = {**_DEFAULT_FIELD_MAP, **(field_map or {})}
 
+    format_hint = str(fmt).strip().lower()
+    if format_hint not in {"auto", "jsonl", "text"}:
+        return {
+            "error": f"invalid format: {fmt}. expected one of auto|jsonl|text",
+            "imported": 0,
+            "skipped": 0,
+            "total": 0,
+        }
+
     if not path.exists():
         return {"error": f"file not found: {path}", "imported": 0, "skipped": 0, "total": 0}
 
@@ -124,7 +155,12 @@ def import_agent_log(
     skipped = 0
 
     for line in lines:
-        row = _parse_line(line)
+        if format_hint == "jsonl":
+            row = _parse_line_jsonl(line)
+        elif format_hint == "text":
+            row = _parse_line_text(line)
+        else:
+            row = _parse_line(line)
         if row is None:
             skipped += 1
             continue

@@ -13,7 +13,7 @@ Thanks for contributing to Agent Fusion OS.
 - keeps architecture modular
 - includes tests/validation scripts when possible
 - updates docs for behavior changes
-- runs `bash scripts/preflight.sh`
+- runs `bash scripts/preflight.sh`（含 pre-check、retry/backoff+timeout、credentials/scope gate）
 - keeps SDK/MCP behavior contract stable (`pytest -q tests/test_contracts.py`)
 
 ## Principles

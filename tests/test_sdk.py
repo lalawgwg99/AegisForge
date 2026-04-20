@@ -124,6 +124,35 @@ class TestLogImport:
         r = af.import_log(log_file)
         assert r["imported"] == 1
 
+    def test_import_forced_format(self, tmp_path):
+        from aegisforge import AegisForge
+
+        log_file = tmp_path / "mixed.log"
+        log_file.write_text(
+            '{"level":"critical","message":"service down","source":"api"}\n'
+            "ERROR plain text timeout\n"
+        )
+
+        af = AegisForge(ROOT)
+
+        r_jsonl = af.import_log(log_file, format="jsonl")
+        assert r_jsonl["imported"] == 1
+
+        r_text = af.import_log(log_file, format="text")
+        assert r_text["imported"] == 1
+
+    def test_import_invalid_format(self, tmp_path):
+        from aegisforge import AegisForge
+
+        log_file = tmp_path / "agent.log"
+        log_file.write_text("ERROR timeout\n")
+
+        af = AegisForge(ROOT)
+        r = af.import_log(log_file, format="xml")
+        assert r["imported"] == 0
+        assert "error" in r
+        assert "invalid format" in r["error"]
+
     def test_import_field_map(self, tmp_path):
         from aegisforge import AegisForge
         log_file = tmp_path / "custom.jsonl"
@@ -173,8 +202,9 @@ class TestLLMExtract:
 
         state = {"count": 0}
 
-        def _fake_urlopen(req, timeout):
+        def _fake_urlopen(_req, timeout):
             state["count"] += 1
+            _ = timeout
             if state["count"] < 3:
                 raise urllib.error.URLError(TimeoutError("timed out"))
             return _FakeResp()
@@ -198,8 +228,9 @@ class TestLLMExtract:
 
         state = {"count": 0}
 
-        def _fake_urlopen(req, timeout):
+        def _fake_urlopen(_req, timeout):
             state["count"] += 1
+            _ = timeout
             raise urllib.error.HTTPError(
                 url="http://localhost",
                 code=401,
@@ -227,8 +258,9 @@ class TestLLMExtract:
 
         attempts = {"count": 0}
 
-        def _fake_urlopen(req, timeout):
+        def _fake_urlopen(_req, timeout):
             attempts["count"] += 1
+            _ = timeout
             raise urllib.error.HTTPError(
                 url="http://localhost",
                 code=503,
@@ -266,8 +298,9 @@ class TestLLMExtract:
 
         attempts = {"count": 0}
 
-        def _fake_urlopen(req, timeout):
+        def _fake_urlopen(_req, timeout):
             attempts["count"] += 1
+            _ = timeout
             if attempts["count"] == 1:
                 raise urllib.error.HTTPError(
                     url="http://localhost",
@@ -307,8 +340,9 @@ class TestLLMExtract:
 
         attempts = {"count": 0}
 
-        def _fake_urlopen(req, timeout):
+        def _fake_urlopen(_req, timeout):
             attempts["count"] += 1
+            _ = timeout
             if attempts["count"] == 1:
                 raise urllib.error.URLError(ConnectionResetError("connection reset"))
             return _FakeResp()

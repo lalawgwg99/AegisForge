@@ -300,8 +300,20 @@ PYTHONPATH=src python -m aegisforge.cli quality-check --rounds 300
 ### 一鍵 preflight
 
 ```bash
+# 預設：lint + type + tests + quality gate
 bash scripts/preflight.sh
+
+# 若流程需要憑證，先宣告必要 env（credentials gate）
+PRECHECK_REQUIRED_ENVS="OPENAI_API_KEY" bash scripts/preflight.sh
+
+# 若需要 scope 驗證，注入自訂檢查命令（scope gate）
+PRECHECK_SCOPE_CHECK_CMD='python3 -m aegisforge.cli safety-check --action "release" --content "artifact publish" --profile strict' bash scripts/preflight.sh
 ```
+
+> 內建 Hard Gate：
+> - input / pre-check：必要路徑與命令存在檢查
+> - retry/backoff + timeout：每步驟有重試與超時邊界
+> - credentials/scope：可透過 `PRECHECK_REQUIRED_ENVS`、`PRECHECK_SCOPE_CHECK_CMD` 強制檢查
 
 ### Release gate（發佈前必跑）
 
